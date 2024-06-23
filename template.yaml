@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  form-tree-api
+
+  Sample SAM Template for form-tree-api
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+    Architectures:
+      - x86_64
+    Runtime: python3.9
+    Handler: app.lambda_handler
+    Layers:
+      - Ref: FormTreeLayer
+  Api:
+    Auth:
+      DefaultAuthorizer: CognitoAuth
+      AddDefaultAuthorizerToCorsPreflight: false
+      Authorizers:
+        CognitoAuth:
+          UserPoolArn:
+            Fn::GetAtt:
+              - FormTreeAppUserPool
+              - Arn
+    Cors:
+      AllowMethods: "'POST,GET,PUT,DELETE,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'http://localhost:3000'"
+      AllowCredentials: true
+
+Resources:
+  FormTreeLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: form-tree-layer
+      Description: Lambda Layer with util functions for the Form Tree App
+      ContentUri: form_tree_layer
+      CompatibleRuntimes:
+        - python3.9
+  GetFormsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: get_forms/
+      Events:
+        GetForms:
+          Type: Api
+          Properties:
+            Path: /form
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FormsTable
+  GetFormFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: get_form/
+      Events:
+        GetForms:
+          Type: Api
+          Properties:
+            Path: /form/{id}
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FormsTable
+        - S3ReadPolicy:
+            BucketName: !Ref S3Bucket
+  PostFormFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: post_form/
+      Events:
+        PostForm:
+          Type: Api
+          Properties:
+            Path: /form
+            Method: post
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref FormsTable
+        - S3WritePolicy:
+            BucketName: !Ref S3Bucket
+  PutFormFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: put_form/
+      Events:
+        PutForm:
+          Type: Api
+          Properties:
+            Path: /form/{id}
+            Method: put
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref FormsTable
+  DeleteFormFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: delete_form/
+      Events:
+        DeleteForm:
+          Type: Api
+          Properties:
+            Path: /form/{id}
+            Method: delete
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FormsTable
+        - S3CrudPolicy:
+            BucketName: !Ref S3Bucket
+  BulkDeleteFormFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: bulk_delete_form/
+      Events:
+        DeleteForm:
+          Type: Api
+          Properties:
+            Path: /form
+            Method: delete
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FormsTable
+        - S3CrudPolicy:
+            BucketName: !Ref S3Bucket
+  PutFormTreeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: put_form_tree/
+      Events:
+        DeleteForm:
+          Type: Api
+          Properties:
+            Path: /form/{id}/form-tree
+            Method: put
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FormsTable
+        - S3WritePolicy:
+            BucketName: !Ref S3Bucket
+  FormsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "owner"
+          AttributeType: "S"
+        - AttributeName: "id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "owner"
+          KeyType: "HASH"
+        - AttributeName: "id"
+          KeyType: "RANGE"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TableName: form-tree-app-forms
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: form-tree-app
+  FormTreeAppUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      MfaConfiguration: "OFF"
+      UserPoolName: form-tree-app-user-pool
+  FormTreeAppUserPoolClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      ClientName: form-tree-app-client
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_CUSTOM_AUTH
+      GenerateSecret: false
+      UserPoolId: !Ref FormTreeAppUserPool
+
+Outputs:
+  TreeFormApi:
+    Description: "API Gateway base URL for Prod stage"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
